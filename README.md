@@ -1,207 +1,61 @@
-# Olist Data Warehouse Project
+# Proyecto Data Warehouse de Olist
 
-This project recreates an end-to-end data workflow using the public Olist e-commerce dataset from Kaggle. The goal is to build a portfolio-ready data solution that starts with raw data ingestion through Azure, continues with SQL-based cleaning and transformation, and ends with a dimensional model designed for business reporting and KPI analysis.
+Este proyecto recrea un flujo de datos de extremo a extremo a partir del dataset publico de Olist disponible en Kaggle. La solucion fue construida como proyecto de portafolio con el objetivo de demostrar una implementacion completa de ingesta, limpieza, transformacion, modelado dimensional y analisis de negocio usando SQL Server y Azure como punto de entrada para la carga inicial.
 
-## Project Overview
+La idea central del proyecto fue no limitarse a consultar archivos planos o hacer analisis exploratorio aislado, sino simular una arquitectura mas cercana a un entorno analitico real. Para ello, los datos se organizaron en capas separadas con responsabilidades bien definidas: una capa `raw` para recibir la informacion tal como llega desde origen, una capa `stg` para limpiar y tipar los datos, y una capa `dw` para consolidar el modelo analitico final.
 
-The solution is structured in three layers:
+## Objetivo del proyecto
 
-- `raw`: landing zone for source data loaded from Azure
-- `stg`: cleaned and typed staging layer for transformation
-- `dw`: dimensional model for analytics and reporting
+El objetivo principal fue construir un mini ecosistema de datos orientado a reporteria y analitica sobre el negocio de e-commerce de Olist. A nivel tecnico, el proyecto busca evidenciar capacidades en:
 
-The project was built in SQL Server using T-SQL and follows a simple warehouse pattern:
+- diseno de pipelines de carga
+- modelado por capas
+- limpieza y normalizacion de datos
+- transformaciones en T-SQL
+- construccion de tablas dimensionales y de hechos
+- definicion de metricas de negocio
+- elaboracion de consultas analiticas para reporteria
 
-1. Load source files into `raw` tables.
-2. Clean and standardize the data in `stg`.
-3. Populate dimensions and fact tables in `dw`.
-4. Query business KPIs from the warehouse model.
+A nivel de portafolio, el proyecto refleja una forma estructurada de trabajar datos: primero asegurando trazabilidad del dato crudo, luego aplicando reglas de calidad y finalmente exponiendo un modelo apto para responder preguntas del negocio.
 
-## Architecture
+## Contexto de la solucion
+
+El dataset de Olist contiene informacion relacionada con clientes, ordenes, items, pagos, resenas, productos, vendedores y geolocalizacion. Aunque los datos son publicos y relativamente accesibles, no vienen listos para un consumo analitico directo. Existen diferencias de tipos de datos, abreviaturas de estados, nombres de ciudades inconsistentes, fechas en texto y relaciones que requieren transformacion para poder construir indicadores confiables.
+
+Por esa razon, la solucion se planteo como un flujo ETL por capas:
+
+1. La data se carga primero en tablas `raw`, preservando el formato original del origen.
+2. Luego se mueve a tablas `stg`, donde se corrigen tipos de datos, formatos y valores.
+3. Finalmente se carga a un esquema `dw`, donde la informacion queda organizada en dimensiones y hechos para analisis.
+4. Sobre el modelo dimensional se ejecutan consultas de KPI y reporteria.
+
+## Arquitectura general
 
 ```mermaid
 flowchart LR
-    A["Kaggle Olist Dataset"] --> B["Azure Ingestion"]
-    B --> C["raw schema"]
-    C --> D["stg schema"]
-    D --> E["dw schema"]
-    E --> F["Business KPI Queries"]
+    A["Dataset publico de Olist en Kaggle"] --> B["Carga inicial desde Azure"]
+    B --> C["Schema raw"]
+    C --> D["Schema stg"]
+    D --> E["Schema dw"]
+    E --> F["Consultas KPI y analisis de negocio"]
 ```
 
-## Data Model
+Esta arquitectura responde a una logica simple pero muy util:
 
-### Raw Layer
+- `raw` protege la fidelidad del origen
+- `stg` concentra la limpieza y normalizacion
+- `dw` facilita el consumo analitico
 
-The `raw` schema stores the source data with minimal processing. All columns are initially created as text fields to preserve the original format and simplify ingestion.
+Separar las capas mejora la mantenibilidad del proyecto, hace mas facil depurar errores y permite que cada paso tenga un proposito claro dentro del flujo.
 
-Raw tables:
+## Tecnologias utilizadas
 
-- `raw.customers`
-- `raw.geolocation`
-- `raw.order_items`
-- `raw.order_payments`
-- `raw.order_reviews`
-- `raw.orders`
-- `raw.products`
-- `raw.sellers`
-- `raw.product_category_name_translation`
+- SQL Server
+- T-SQL
+- Azure para la ingesta inicial hacia tablas `raw`
+- Kaggle como fuente del dataset publico de Olist
 
-### Staging Layer
-
-The `stg` schema standardizes the data model and prepares the dataset for analytics. At this stage, the project converts data types, rounds monetary fields, cleans city names, expands Brazilian state abbreviations, and translates product categories.
-
-Main transformation examples:
-
-- `VARCHAR` source columns are converted into `DATE`, `DATETIME`, `DECIMAL`, `NUMERIC`, and `FLOAT`
-- city values are cleaned with `dbo.fn_clean_city`
-- state codes such as `SP`, `RJ`, and `MG` are mapped to full state names
-- product category names are translated to English using the translation table
-- review timestamps are corrected with `TRY_CONVERT` and character cleanup
-
-Staging tables:
-
-- `stg.customers`
-- `stg.geolocation`
-- `stg.order_items`
-- `stg.order_payments`
-- `stg.order_reviews`
-- `stg.orders`
-- `stg.products`
-- `stg.sellers`
-- `stg.product_category_name_translation`
-
-### Data Warehouse Layer
-
-The `dw` schema contains a star-schema style model for reporting and analysis.
-
-Dimensions:
-
-- `dw.dim_customer`
-- `dw.dim_product`
-- `dw.dim_seller`
-- `dw.dim_location`
-- `dw.dim_date`
-
-Facts:
-
-- `dw.fact_orders`
-- `dw.fact_order_items`
-
-`dw.fact_orders` stores business-level metrics such as:
-
-- `total_order_value`
-- `total_freight`
-- `total_items`
-- `delivery_days`
-- `delivery_delay`
-- `avg_review_score`
-
-`dw.fact_order_items` stores item-level transaction detail:
-
-- `price`
-- `freight_value`
-- `total_value`
-
-## Data Cleaning Function
-
-The project includes the custom SQL function `dbo.fn_clean_city` to normalize city names before loading geographic data into staging.
-
-This function performs tasks such as:
-
-- null handling
-- removal of malformed patterns and special characters
-- accent normalization
-- numeric character removal
-- trimming at delimiters like commas, parentheses, and hyphens
-- whitespace cleanup
-
-This is especially useful for improving joins and consistency between geographic and customer or seller location data.
-
-## ETL and Loading Logic
-
-### 1. Raw Table Creation
-
-The raw tables are created in:
-
-- `Create tables/Create Raw tables.sql`
-
-### 2. Staging Table Creation
-
-The staging tables are created in:
-
-- `Create tables/Create Staging tables.sql`
-
-### 3. Warehouse Table Creation
-
-The dimensional model is created in:
-
-- `Create tables/Create Data warehouse tables.sql`
-
-### 4. Staging Loads
-
-The transformation and inserts from `raw` to `stg` are handled in:
-
-- `Insert data/insert_staging.sql`
-
-This script includes:
-
-- customer standardization
-- geolocation cleanup using `dbo.fn_clean_city`
-- rounding of prices and freight values
-- conversion of order and review dates
-- translation of product categories
-- seller normalization
-
-The script also contains setup notes for:
-
-- creating the `OlistDW` database
-- creating the Azure connection user
-- creating the `raw`, `stg`, and `dw` schemas
-
-### 5. Warehouse Loads
-
-The inserts from `stg` to `dw` are handled in:
-
-- `Insert data/insert_data_warehouse.sql`
-
-This script populates:
-
-- customer, product, seller, date, and location dimensions
-- order-level and item-level fact tables
-
-It also enriches customer and seller dimensions with `location_key` using the location dimension.
-
-### 6. KPI and Reporting Queries
-
-Business analysis queries are available in:
-
-- `olist_business_kpis.sql`
-
-According to the script header, the KPI layer was authored by Anthony Ccasani.
-
-## Business Analysis Covered
-
-The KPI script includes queries for:
-
-- monthly revenue and order growth
-- delivery performance and late delivery rate
-- customer lifetime value and top customers
-- top product categories and best-selling products
-- seller performance and delivery issues
-- satisfaction analysis using review scores
-- business funnel metrics
-- geographic sales analysis
-- cohort retention analysis
-- RFM segmentation
-- churn identification
-- delivery performance segmentation
-- market basket analysis
-- Pareto contribution analysis
-- customer segmentation by location
-- repeat customer rate
-- average order value distribution
-
-## Repository Structure
+## Estructura del repositorio
 
 ```text
 Olist/
@@ -218,39 +72,329 @@ Olist/
 `-- README.md
 ```
 
-## Execution Order
+## Flujo de trabajo del proyecto
 
-If you want to reproduce the project from scratch, run the scripts in this order:
+### 1. Capa Raw: recepcion del dato original
 
-1. Create the database and schemas if needed.
-2. Run `Create tables/Create Raw tables.sql`.
-3. Load the Olist source data into the `raw` tables through Azure.
-4. Run `Functions/fn_clean_city.sql`.
-5. Run `Create tables/Create Staging tables.sql`.
-6. Run `Insert data/insert_staging.sql`.
-7. Run `Create tables/Create Data warehouse tables.sql`.
-8. Run `Insert data/insert_data_warehouse.sql`.
-9. Run `olist_business_kpis.sql` for analysis and reporting.
+La primera capa del proyecto esta disenada para recibir la data sin imponer demasiadas reglas de validacion en el momento de entrada. En [`Create tables/Create Raw tables.sql`](./Create%20tables/Create%20Raw%20tables.sql) se crean tablas como:
 
-## Tech Stack
+- `raw.customers`
+- `raw.geolocation`
+- `raw.order_items`
+- `raw.order_payments`
+- `raw.order_reviews`
+- `raw.orders`
+- `raw.products`
+- `raw.sellers`
+- `raw.product_category_name_translation`
 
-- SQL Server
-- T-SQL
-- Azure for raw data ingestion
-- Kaggle public dataset: Olist Brazilian e-commerce data
+En esta capa casi todas las columnas se definen como `VARCHAR`. Esta decision no es casual. En un proceso de ingesta inicial, almacenar temporalmente los datos como texto ayuda a:
 
-## Portfolio Value
+- evitar fallos de carga por formatos inesperados
+- conservar el dato original para auditoria o reprocesos
+- desacoplar la ingesta de la transformacion
 
-This project demonstrates practical skills in:
+En otras palabras, la capa `raw` funciona como una zona de aterrizaje. Su prioridad es capturar la informacion del origen con la menor friccion posible, aunque todavia no sea adecuada para analisis.
 
-- data ingestion design
-- layered SQL modeling
-- data cleaning and standardization
-- dimensional modeling
-- ETL development
-- business KPI reporting
-- analytical query design
+### 2. Capa Staging: limpieza, conversion y estandarizacion
 
-## Author
+La segunda capa se define en [`Create tables/Create Staging tables.sql`](./Create%20tables/Create%20Staging%20tables.sql). Aqui ya no se replica simplemente el origen, sino que se modelan tablas con tipos de datos mas apropiados para trabajo analitico.
+
+Por ejemplo:
+
+- latitud y longitud pasan a `DECIMAL`
+- precios y valores monetarios se llevan a `FLOAT`
+- campos numericos como cantidades y secuencias se convierten a `NUMERIC`
+- fechas y timestamps se convierten a `DATE` o `DATETIME`
+
+Esta capa cumple una funcion clave: transformar un conjunto de archivos operacionales en un dataset estructurado, consistente y listo para integrarse en un modelo dimensional.
+
+La carga desde `raw` hacia `stg` se realiza en [`Insert data/insert_staging.sql`](./Insert%20data/insert_staging.sql). Este script concentra gran parte de la logica de calidad de datos del proyecto.
+
+#### Transformaciones aplicadas en staging
+
+Entre las transformaciones mas importantes se encuentran:
+
+- conversion de tipos de datos con `TRY_CONVERT`
+- redondeo de importes monetarios en precios y fletes
+- normalizacion de nombres de ciudades
+- traduccion y enriquecimiento de categorias de producto
+- expansion de abreviaturas de estados de Brasil a su nombre completo
+- limpieza de timestamps con caracteres invisibles o formatos problematicos
+
+#### Limpieza de clientes
+
+En la tabla de clientes se estandariza el formato de ciudad para mejorar la presentacion y consistencia de joins. Ademas, los codigos abreviados de estado se traducen a nombres completos como `Sao Paulo`, `Rio de Janeiro` o `Minas Gerais`.
+
+Esto hace que el dato sea mas legible para analisis y evita que el consumo final dependa de diccionarios externos.
+
+#### Limpieza geografica con funcion personalizada
+
+Uno de los componentes mas interesantes del proyecto es la funcion [`Functions/fn_clean_city.sql`](./Functions/fn_clean_city.sql), creada para limpiar nombres de ciudades antes de cargar la tabla `stg.geolocation`.
+
+La funcion `dbo.fn_clean_city` resuelve varios problemas de calidad del dataset:
+
+- manejo de valores `NULL`
+- eliminacion de patrones defectuosos
+- reemplazo de caracteres especiales
+- normalizacion de acentos
+- eliminacion de numeros incrustados en nombres
+- corte de texto por delimitadores como coma, parentesis o guion
+- eliminacion de espacios duplicados
+- limpieza de caracteres no alfabeticos al inicio
+
+Este paso es muy importante porque la geolocalizacion suele traer valores con variaciones, errores tipograficos o ruido textual. Si esos nombres no se limpian, las relaciones con clientes o vendedores pueden quedar inconsistentes y el analisis geografico pierde calidad.
+
+#### Limpieza de ordenes y resenas
+
+Las ordenes y resenas contienen campos de fecha y hora que originalmente llegan como texto. En staging se convierten con `TRY_CONVERT` a tipos temporales validos. En el caso de las resenas, tambien se contempla la existencia de caracteres invisibles en el origen, eliminandolos antes de convertir el timestamp de respuesta.
+
+Esto permite:
+
+- calcular tiempos de entrega
+- comparar fechas estimadas vs reales
+- analizar momentos de compra
+- relacionar experiencia del cliente con cumplimiento logistico
+
+#### Traduccion de categorias de producto
+
+Los productos se enriquecen usando la tabla `raw.product_category_name_translation`. Esto permite pasar de nombres de categoria originales en portugues a una representacion mas interpretable para usuarios de negocio o analistas que prefieran nomenclatura en ingles.
+
+Adicionalmente, el script deja documentado que hubo categorias faltantes que debieron agregarse manualmente, lo cual es una senal positiva desde el punto de vista de portafolio: muestra que no solo se ejecuto una carga automatica, sino que tambien se detectaron y resolvieron pequenos vacios del origen.
+
+### 3. Capa Data Warehouse: modelo dimensional para analitica
+
+La capa final se define en [`Create tables/Create Data warehouse tables.sql`](./Create%20tables/Create%20Data%20warehouse%20tables.sql). Aqui el proyecto da el salto desde una estructura transaccional o intermedia hacia un modelo orientado a consulta.
+
+El esquema `dw` incluye:
+
+#### Dimensiones
+
+- `dw.dim_customer`
+- `dw.dim_product`
+- `dw.dim_seller`
+- `dw.dim_location`
+- `dw.dim_date`
+
+#### Tablas de hechos
+
+- `dw.fact_orders`
+- `dw.fact_order_items`
+
+La razon de construir dimensiones y hechos es separar los atributos descriptivos de las metricas cuantitativas. Esto hace que el modelo sea mas facil de consultar, mas expresivo para reporteria y mas alineado con practicas clasicas de Business Intelligence.
+
+### 4. Carga del Data Warehouse
+
+La logica de insercion hacia el modelo final esta en [`Insert data/insert_data_warehouse.sql`](./Insert%20data/insert_data_warehouse.sql). Este script toma datos ya limpios desde `stg` y los convierte en estructuras analiticas listas para explotacion.
+
+#### Dimension de clientes
+
+`dw.dim_customer` concentra informacion clave del cliente como:
+
+- `customer_id`
+- `customer_unique_id`
+- ciudad
+- estado
+
+Mas adelante, esta dimension se enriquece con `location_key`, conectandola con la dimension geografica para facilitar analisis territoriales.
+
+#### Dimension de productos
+
+`dw.dim_product` almacena el producto y su categoria. Aqui se consolida la relacion entre el identificador del producto y su clasificacion, habilitando consultas por categoria, top productos y analisis de contribucion al ingreso.
+
+#### Dimension de vendedores
+
+`dw.dim_seller` representa a los sellers con atributos de ciudad y estado. Igual que con clientes, luego se asigna una `location_key` para poder cruzar informacion comercial con perspectiva geografica.
+
+#### Dimension de fechas
+
+`dw.dim_date` se construye con un calendario generado por un CTE recursivo entre 2016 y 2020. Esta tabla es fundamental en cualquier warehouse porque evita recalcular atributos temporales en cada consulta y permite analizar con facilidad por:
+
+- anio
+- mes
+- dia
+- nombre del mes
+
+#### Dimension de ubicacion
+
+`dw.dim_location` agrupa informacion geografica por codigo postal, ciudad y estado, calculando ademas latitud y longitud promedio. Esta aproximacion resume multiples registros de geolocalizacion a una representacion mas estable para consulta.
+
+#### Fact table de ordenes
+
+`dw.fact_orders` resume la operacion a nivel de orden e incorpora metricas de negocio como:
+
+- `total_order_value`
+- `total_freight`
+- `total_items`
+- `delivery_days`
+- `delivery_delay`
+- `avg_review_score`
+
+Esta tabla es especialmente valiosa porque integra datos de varias fuentes:
+
+- ordenes
+- items de orden
+- resenas
+- clientes
+- productos
+- vendedores
+- fechas
+
+El resultado es una vista consolidada de la compra, adecuada para medir revenue, volumen, experiencia del cliente y cumplimiento logistico.
+
+#### Fact table de items
+
+`dw.fact_order_items` conserva el detalle a nivel de item vendido. Aqui se almacenan:
+
+- precio del item
+- valor del flete
+- valor total por item
+
+Esto permite analisis mas finos, por ejemplo:
+
+- categorias con mayor ingreso
+- productos mas vendidos
+- combinaciones de compra
+- distribucion del ticket a nivel granular
+
+### 5. Enlace geografico entre clientes, vendedores y ubicaciones
+
+Un paso adicional del proyecto consiste en agregar `location_key` a las dimensiones de clientes y vendedores. Esta decision es importante porque desacopla la descripcion geografica del resto de atributos y deja preparado el modelo para analisis espaciales o regionales.
+
+Gracias a este enlace se pueden construir vistas como:
+
+- ventas por estado
+- comparacion de gasto promedio por region
+- concentracion geografica de clientes
+- distribucion territorial de sellers
+
+## Consultas de negocio y KPI
+
+La capa analitica se documenta en [`olist_business_kpis.sql`](./olist_business_kpis.sql). En este archivo se agrupan consultas orientadas a reporteria y exploracion del desempeno del negocio.
+
+El valor de esta capa es que transforma el modelo dimensional en respuestas concretas a preguntas de negocio. No se trata solo de almacenar datos correctamente, sino de habilitar analisis utiles para toma de decisiones.
+
+### Principales frentes analiticos cubiertos
+
+#### Revenue y crecimiento
+
+Se incluyen consultas para:
+
+- ventas por mes
+- cantidad de ordenes por periodo
+- ticket promedio
+- crecimiento mensual porcentual
+
+Estas metricas ayudan a entender la evolucion del negocio en el tiempo y detectar cambios de tendencia.
+
+#### Desempeno logistico
+
+Se analizan indicadores como:
+
+- tiempo promedio de entrega
+- porcentaje de entregas tardias
+- tiempos de entrega por estado
+
+Este bloque conecta el desempeno operativo con el impacto que puede tener en la experiencia del cliente.
+
+#### Analitica de clientes
+
+El archivo incorpora vistas de:
+
+- top clientes por gasto
+- Customer Lifetime Value
+- cohortes de retencion
+- segmentacion RFM
+- churn de clientes
+- tasa de recompra
+
+Estas consultas permiten pasar de una lectura transaccional a una perspectiva de relacion con el cliente, identificando recurrencia, valor y riesgo de abandono.
+
+#### Analitica de productos
+
+Se contemplan consultas para:
+
+- categorias con mayor revenue
+- categorias mas vendidas
+- ticket promedio por producto
+- market basket analysis
+- contribucion acumulada tipo Pareto
+
+Con ello se puede entender mejor que productos impulsan la facturacion y cuales tienden a comprarse en conjunto.
+
+#### Analitica de sellers
+
+Tambien se incluyen indicadores para:
+
+- top sellers por ingresos
+- sellers con peor desempeno logistico
+
+Esto ayuda a detectar tanto los principales aportantes al revenue como posibles focos de friccion operativa.
+
+#### Satisfaccion del cliente
+
+El proyecto relaciona score promedio de resenas con el tiempo de entrega y segmenta el cumplimiento logistico en categorias como:
+
+- `On Time`
+- `Slight Delay`
+- `Severe Delay`
+
+Esta combinacion es especialmente util porque vincula experiencia del cliente con variables operativas medibles.
+
+#### Analisis geografico
+
+El modelo soporta consultas como:
+
+- ventas por estado
+- segmentacion de clientes por ubicacion
+
+Esto amplifica el valor de las tablas de clientes, sellers y geolocalizacion al integrarlas en un marco analitico unificado.
+
+## Orden recomendado de ejecucion
+
+Para reconstruir el proyecto desde cero, el orden sugerido es el siguiente:
+
+1. Crear la base de datos `OlistDW` si todavia no existe.
+2. Crear los esquemas `raw`, `stg` y `dw`.
+3. Ejecutar [`Create tables/Create Raw tables.sql`](./Create%20tables/Create%20Raw%20tables.sql).
+4. Cargar los archivos de origen en las tablas `raw` usando Azure.
+5. Ejecutar [`Functions/fn_clean_city.sql`](./Functions/fn_clean_city.sql).
+6. Ejecutar [`Create tables/Create Staging tables.sql`](./Create%20tables/Create%20Staging%20tables.sql).
+7. Ejecutar [`Insert data/insert_staging.sql`](./Insert%20data/insert_staging.sql).
+8. Ejecutar [`Create tables/Create Data warehouse tables.sql`](./Create%20tables/Create%20Data%20warehouse%20tables.sql).
+9. Ejecutar [`Insert data/insert_data_warehouse.sql`](./Insert%20data/insert_data_warehouse.sql).
+10. Ejecutar [`olist_business_kpis.sql`](./olist_business_kpis.sql) para el analisis final.
+
+## Que demuestra este proyecto
+
+Este proyecto no solo muestra consultas SQL, sino una forma estructurada de pensar una solucion de datos completa. En particular, evidencia experiencia en:
+
+- organizacion de datos por capas
+- transformacion de datos crudos a modelos analiticos
+- creacion de funciones reutilizables para calidad de datos
+- integracion de dimensiones y hechos
+- preparacion de datasets para reporteria
+- construccion de metricas de negocio orientadas a decision
+
+Tambien demuestra criterio en el tratamiento de problemas reales de datos, como:
+
+- valores sucios o inconsistentes
+- diferencias de formato entre tablas
+- necesidad de homologar geografias
+- enriquecimiento semantico de categorias
+- consolidacion de eventos transaccionales en indicadores de negocio
+
+## Posibles mejoras futuras
+
+Como evolucion del proyecto, algunas mejoras naturales podrian ser:
+
+- automatizar el pipeline completo de carga y refresco
+- incorporar vistas o procedimientos almacenados para consumo recurrente
+- agregar validaciones de calidad de datos por capa
+- documentar volumenes de datos y tiempos de ejecucion
+- conectar el warehouse a Power BI para visualizaciones ejecutivas
+- incluir pruebas de reconciliacion entre `raw`, `stg` y `dw`
+
+## Autor
 
 Anthony Ccasani
