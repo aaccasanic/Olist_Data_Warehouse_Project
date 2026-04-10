@@ -33,11 +33,12 @@ Por esa razon, la solucion se planteo como un flujo ETL por capas:
 
 ```mermaid
 flowchart LR
-    A["Dataset publico de Olist en Kaggle"] --> B["Carga inicial desde Azure"]
-    B --> C["Schema raw"]
-    C --> D["Schema stg"]
-    D --> E["Schema dw"]
-    E --> F["Consultas KPI y analisis de negocio"]
+    A["Dataset publico de Olist en Kaggle"] --> B["Azure Blob Storage"]
+    B --> C["ADF Pipeline PL_INGEST_OLIST"]
+    C --> D["Schema raw"]
+    D --> E["Schema stg"]
+    E --> F["Schema dw"]
+    F --> G["Consultas KPI y analisis de negocio"]
 ```
 
 Esta arquitectura responde a una logica simple pero muy util:
@@ -52,7 +53,8 @@ Separar las capas mejora la mantenibilidad del proyecto, hace mas facil depurar 
 
 - SQL Server
 - T-SQL
-- Azure para la ingesta inicial hacia tablas `raw`
+- Azure Data Factory
+- Azure Blob Storage
 - Kaggle como fuente del dataset publico de Olist
 
 ## Estructura del repositorio
@@ -74,6 +76,73 @@ Olist/
 
 ## Flujo de trabajo del proyecto
 
+### Ingesta en Azure Data Factory
+
+La carga inicial a la capa `raw` no se plantea solo como una importacion manual de archivos, sino como un pipeline formal de Azure Data Factory documentado en la definicion `PL_INGEST_OLIST`. Esto fortalece bastante el proyecto a nivel de portafolio porque muestra una preocupacion real por orquestacion, parametrizacion y reutilizacion del proceso de ingesta.
+
+El pipeline `PL_INGEST_OLIST` tiene como objetivo cargar los archivos CSV del dataset de Olist desde almacenamiento en Azure hacia tablas del esquema `raw` en SQL Server. La logica se apoya en actividades `Copy`, un `ForEach` parametrizado y algunas reglas especificas para datasets que requieren tratamiento especial.
+
+#### Actividades principales del pipeline
+
+El pipeline contiene tres bloques relevantes:
+
+- `CP_LOAD_REVIEWS_CLEAN`
+- `CP_LOAD_TRANSLATION_CLEAN`
+- `FE_LOAD_RAW_TABLES`
+
+La secuencia definida actualmente es la siguiente:
+
+1. Primero se ejecuta `CP_LOAD_REVIEWS_CLEAN`.
+2. Luego corre `CP_LOAD_TRANSLATION_CLEAN`.
+3. Finalmente se lanza `FE_LOAD_RAW_TABLES`, que itera secuencialmente sobre la lista de archivos genericos.
+
+Esta estructura deja ver que no todos los archivos fueron tratados de la misma manera. Algunos requirieron una carga dedicada debido a particularidades del origen, mientras que el resto pudo resolverse con una logica parametrizada y reutilizable.
+
+#### Carga especial de resenas
+
+La actividad `CP_LOAD_REVIEWS_CLEAN` carga el archivo `olist_order_reviews_dataset.csv` hacia la tabla `raw.order_reviews`. Lo interesante aqui es que no usa solo conversion automatica, sino mapeos explicitos de columnas en el `TabularTranslator`.
+
+Esto fue necesario porque el archivo de resenas trae una anomalia en el encabezado de una columna: `review_answer_timestamp` contiene un salto de linea residual al final del nombre. En la definicion del pipeline esto aparece como `review_answer_timestamp\r`.
+
+Documentar esta actividad en el README es importante porque demuestra que el pipeline no solo mueve archivos, sino que tambien resuelve defectos concretos del origen durante la ingesta.
+
+#### Carga especial de traduccion de categorias
+
+La actividad `CP_LOAD_TRANSLATION_CLEAN` inserta el dataset de traduccion en `raw.product_category_name_translation`. Este archivo se trata por separado porque cumple un rol de referencia dentro del proyecto: no representa una transaccion del negocio, sino un catalogo que luego se utiliza para enriquecer la capa `stg` y la dimension de productos en `dw`.
+
+En otras palabras, esta actividad prepara uno de los insumos mas importantes para estandarizar categorias y hacer el modelo final mas legible para analisis.
+
+#### Carga generica y parametrizada del resto de tablas raw
+
+La actividad `FE_LOAD_RAW_TABLES` encapsula un `ForEach` secuencial que recorre el parametro `file_list`. Dentro de ese bucle se ejecuta la actividad `CP_LOAD_GENERIC_CSV`, la cual reutiliza el mismo patron de copia para varios archivos del dataset.
+
+Los archivos definidos actualmente en `file_list` son:
+
+- `olist_orders_dataset.csv`
+- `olist_customers_dataset.csv`
+- `olist_order_items_dataset.csv`
+- `olist_products_dataset.csv`
+- `olist_order_payments_dataset.csv`
+- `olist_sellers_dataset.csv`
+- `olist_geolocation_dataset.csv`
+
+Cada item de la lista incluye el nombre del archivo y la tabla destino. Con esto, el pipeline evita repetir una actividad `Copy` por cada CSV y deja la ingesta mas mantenible, mas limpia y mas facil de extender si en el futuro se agregan nuevas entidades.
+
+#### Configuracion tecnica de las actividades Copy
+
+En terminos operativos, el pipeline usa componentes y configuraciones que vale la pena destacar:
+
+- origen `DelimitedTextSource`
+- lectura desde Azure Blob Storage
+- destino `SqlServerSink`
+- modo de escritura `insert`
+- `enableSkipIncompatibleRow` activado para tolerar filas problematicas
+- conversion de tipos habilitada mediante `TabularTranslator`
+- truncamiento permitido cuando es necesario
+- logging de actividad habilitado con nivel `Warning`
+
+Estas decisiones muestran un enfoque pragmatico de ingestion: priorizar la continuidad de la carga, registrar advertencias utiles y dejar que la limpieza mas semantica ocurra despues, en la capa `stg`.
+
 ### 1. Capa Raw: recepcion del dato original
 
 La primera capa del proyecto esta disenada para recibir la data sin imponer demasiadas reglas de validacion en el momento de entrada. En [`Create tables/Create Raw tables.sql`](./Create%20tables/Create%20Raw%20tables.sql) se crean tablas como:
@@ -94,6 +163,8 @@ En esta capa casi todas las columnas se definen como `VARCHAR`. Esta decision no
 - conservar el dato original para auditoria o reprocesos
 - desacoplar la ingesta de la transformacion
 
+Esta decision tambien dialoga muy bien con el pipeline de Azure Data Factory. Al cargar primero a tablas flexibles en `raw`, el proceso reduce el riesgo de que la ingestion falle por problemas de tipado demasiado temprano, especialmente en archivos con detalles sucios o encabezados irregulares.
+
 En otras palabras, la capa `raw` funciona como una zona de aterrizaje. Su prioridad es capturar la informacion del origen con la menor friccion posible, aunque todavia no sea adecuada para analisis.
 
 ### 2. Capa Staging: limpieza, conversion y estandarizacion
@@ -109,7 +180,7 @@ Por ejemplo:
 
 Esta capa cumple una funcion clave: transformar un conjunto de archivos operacionales en un dataset estructurado, consistente y listo para integrarse en un modelo dimensional.
 
-La carga desde `raw` hacia `stg` se realiza en [`Insert data/insert_staging.sql`](./Insert%20data/insert_staging.sql). Este script concentra gran parte de la logica de calidad de datos del proyecto.
+La carga desde `raw` hacia `stg` se realiza en [`Insert data/insert_staging.sql`](./Insert%20data/insert_staging.sql). Este script concentra gran parte de la logica de calidad de datos del proyecto y es el punto en el que la ingestion tecnica se convierte en transformacion analitica.
 
 #### Transformaciones aplicadas en staging
 
@@ -158,7 +229,7 @@ Esto permite:
 
 #### Traduccion de categorias de producto
 
-Los productos se enriquecen usando la tabla `raw.product_category_name_translation`. Esto permite pasar de nombres de categoria originales en portugues a una representacion mas interpretable para usuarios de negocio o analistas que prefieran nomenclatura en ingles.
+Los productos se enriquecen usando la tabla `raw.product_category_name_translation`, la misma que fue cargada mediante la actividad dedicada `CP_LOAD_TRANSLATION_CLEAN` en Azure Data Factory. Esto permite pasar de nombres de categoria originales en portugues a una representacion mas interpretable para usuarios de negocio o analistas que prefieran nomenclatura en ingles.
 
 Adicionalmente, el script deja documentado que hubo categorias faltantes que debieron agregarse manualmente, lo cual es una senal positiva desde el punto de vista de portafolio: muestra que no solo se ejecuto una carga automatica, sino que tambien se detectaron y resolvieron pequenos vacios del origen.
 
@@ -357,7 +428,7 @@ Para reconstruir el proyecto desde cero, el orden sugerido es el siguiente:
 1. Crear la base de datos `OlistDW` si todavia no existe.
 2. Crear los esquemas `raw`, `stg` y `dw`.
 3. Ejecutar [`Create tables/Create Raw tables.sql`](./Create%20tables/Create%20Raw%20tables.sql).
-4. Cargar los archivos de origen en las tablas `raw` usando Azure.
+4. Ejecutar el pipeline `PL_INGEST_OLIST` en Azure Data Factory para cargar los archivos de origen hacia las tablas `raw`.
 5. Ejecutar [`Functions/fn_clean_city.sql`](./Functions/fn_clean_city.sql).
 6. Ejecutar [`Create tables/Create Staging tables.sql`](./Create%20tables/Create%20Staging%20tables.sql).
 7. Ejecutar [`Insert data/insert_staging.sql`](./Insert%20data/insert_staging.sql).
