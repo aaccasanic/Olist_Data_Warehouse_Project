@@ -2,7 +2,7 @@
 
 Choose your language / Elige tu idioma:
 
-- [Espanol](./README.es.md)
+- [Español](./README.es.md)
 - [English](./README.en.md)
 
 This repository documents an end-to-end data project built with the public Olist dataset, Azure Data Factory, SQL Server, and a layered architecture with `raw`, `stg`, and `dw` schemas.
