@@ -1,4 +1,4 @@
-[Espanol](./README.es.md) | [Language selector](./README.md)
+[Español](./README.es.md) | [Language selector](./README.md)
 
 # Olist Data Warehouse Project
 
