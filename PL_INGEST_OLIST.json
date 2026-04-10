@@ -1,0 +1,369 @@
+{
+    "name": "PL_INGEST_OLIST",
+    "properties": {
+        "activities": [
+            {
+                "name": "FE_LOAD_RAW_TABLES",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "CP_LOAD_TRANSLATION_CLEAN",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "items": {
+                        "value": "@pipeline().parameters.file_list",
+                        "type": "Expression"
+                    },
+                    "isSequential": true,
+                    "activities": [
+                        {
+                            "name": "CP_LOAD_GENERIC_CSV",
+                            "type": "Copy",
+                            "dependsOn": [],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "source": {
+                                    "type": "DelimitedTextSource",
+                                    "storeSettings": {
+                                        "type": "AzureBlobStorageReadSettings",
+                                        "recursive": true,
+                                        "enablePartitionDiscovery": false
+                                    },
+                                    "formatSettings": {
+                                        "type": "DelimitedTextReadSettings"
+                                    }
+                                },
+                                "sink": {
+                                    "type": "SqlServerSink",
+                                    "writeBehavior": "insert",
+                                    "sqlWriterUseTableLock": false
+                                },
+                                "enableStaging": false,
+                                "enableSkipIncompatibleRow": true,
+                                "validateDataConsistency": false,
+                                "logSettings": {
+                                    "enableCopyActivityLog": true,
+                                    "copyActivityLogSettings": {
+                                        "logLevel": "Warning",
+                                        "enableReliableLogging": false
+                                    },
+                                    "logLocationSettings": {
+                                        "linkedServiceName": {
+                                            "referenceName": "DS_CSV_orders",
+                                            "type": "LinkedServiceReference"
+                                        }
+                                    }
+                                },
+                                "translator": {
+                                    "type": "TabularTranslator",
+                                    "typeConversion": true,
+                                    "typeConversionSettings": {
+                                        "allowDataTruncation": true,
+                                        "treatBooleanAsNumber": false
+                                    }
+                                }
+                            },
+                            "inputs": [
+                                {
+                                    "referenceName": "DS_CSV_orders",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "file_name": {
+                                            "value": "@item().file",
+                                            "type": "Expression"
+                                        }
+                                    }
+                                }
+                            ],
+                            "outputs": [
+                                {
+                                    "referenceName": "DS_SQL_orders",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "table_name": {
+                                            "value": "@replace(replace(item().table,'olist_',''),'_dataset.csv','')",
+                                            "type": "Expression"
+                                        },
+                                        "schema": "raw"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "CP_LOAD_REVIEWS_CLEAN",
+                "type": "Copy",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "DelimitedTextSource",
+                        "storeSettings": {
+                            "type": "AzureBlobStorageReadSettings",
+                            "recursive": true,
+                            "enablePartitionDiscovery": false
+                        },
+                        "formatSettings": {
+                            "type": "DelimitedTextReadSettings"
+                        }
+                    },
+                    "sink": {
+                        "type": "SqlServerSink",
+                        "writeBehavior": "insert",
+                        "sqlWriterUseTableLock": false
+                    },
+                    "enableStaging": false,
+                    "enableSkipIncompatibleRow": true,
+                    "logSettings": {
+                        "enableCopyActivityLog": true,
+                        "copyActivityLogSettings": {
+                            "logLevel": "Warning",
+                            "enableReliableLogging": false
+                        },
+                        "logLocationSettings": {
+                            "linkedServiceName": {
+                                "referenceName": "Blob_Storage_Account",
+                                "type": "LinkedServiceReference"
+                            }
+                        }
+                    },
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "mappings": [
+                            {
+                                "source": {
+                                    "name": "review_id",
+                                    "type": "String",
+                                    "physicalType": "String"
+                                },
+                                "sink": {
+                                    "name": "review_id",
+                                    "type": "String",
+                                    "physicalType": "varchar"
+                                }
+                            },
+                            {
+                                "source": {
+                                    "name": "order_id",
+                                    "type": "String",
+                                    "physicalType": "String"
+                                },
+                                "sink": {
+                                    "name": "order_id",
+                                    "type": "String",
+                                    "physicalType": "varchar"
+                                }
+                            },
+                            {
+                                "source": {
+                                    "name": "review_score",
+                                    "type": "String",
+                                    "physicalType": "String"
+                                },
+                                "sink": {
+                                    "name": "review_score",
+                                    "type": "String",
+                                    "physicalType": "varchar"
+                                }
+                            },
+                            {
+                                "source": {
+                                    "name": "review_comment_title",
+                                    "type": "String",
+                                    "physicalType": "String"
+                                },
+                                "sink": {
+                                    "name": "review_comment_title",
+                                    "type": "String",
+                                    "physicalType": "varchar"
+                                }
+                            },
+                            {
+                                "source": {
+                                    "name": "review_comment_message",
+                                    "type": "String",
+                                    "physicalType": "String"
+                                },
+                                "sink": {
+                                    "name": "review_comment_message",
+                                    "type": "String",
+                                    "physicalType": "varchar"
+                                }
+                            },
+                            {
+                                "source": {
+                                    "name": "review_creation_date",
+                                    "type": "String",
+                                    "physicalType": "String"
+                                },
+                                "sink": {
+                                    "name": "review_creation_date",
+                                    "type": "String",
+                                    "physicalType": "varchar"
+                                }
+                            },
+                            {
+                                "source": {
+                                    "name": "review_answer_timestamp\r",
+                                    "type": "String",
+                                    "physicalType": "String"
+                                },
+                                "sink": {
+                                    "name": "review_answer_timestamp",
+                                    "type": "String",
+                                    "physicalType": "varchar"
+                                }
+                            }
+                        ],
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                },
+                "inputs": [
+                    {
+                        "referenceName": "DS_CSV_orders_Review",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "file_name": "olist_order_reviews_dataset.csv"
+                        }
+                    }
+                ],
+                "outputs": [
+                    {
+                        "referenceName": "DS_SQL_orders",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "table_name": "order_reviews",
+                            "schema": "raw"
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "CP_LOAD_TRANSLATION_CLEAN",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "CP_LOAD_REVIEWS_CLEAN",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "DelimitedTextSource",
+                        "storeSettings": {
+                            "type": "AzureBlobStorageReadSettings",
+                            "recursive": true,
+                            "enablePartitionDiscovery": false
+                        },
+                        "formatSettings": {
+                            "type": "DelimitedTextReadSettings"
+                        }
+                    },
+                    "sink": {
+                        "type": "SqlServerSink",
+                        "writeBehavior": "insert",
+                        "sqlWriterUseTableLock": false
+                    },
+                    "enableStaging": false,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                },
+                "inputs": [
+                    {
+                        "referenceName": "TranslatedCategories",
+                        "type": "DatasetReference"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "referenceName": "DS_SQL_orders",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "table_name": "product_category_name_translation",
+                            "schema": "raw"
+                        }
+                    }
+                ]
+            }
+        ],
+        "parameters": {
+            "file_list": {
+                "type": "array",
+                "defaultValue": [
+                    {
+                        "file": "olist_orders_dataset.csv",
+                        "table": "orders"
+                    },
+                    {
+                        "file": "olist_customers_dataset.csv",
+                        "table": "customers"
+                    },
+                    {
+                        "file": "olist_order_items_dataset.csv",
+                        "table": "order_items"
+                    },
+                    {
+                        "file": "olist_products_dataset.csv",
+                        "table": "products"
+                    },
+                    {
+                        "file": "olist_order_payments_dataset.csv",
+                        "table": "order_payments"
+                    },
+                    {
+                        "file": "olist_sellers_dataset.csv",
+                        "table": "sellers"
+                    },
+                    {
+                        "file": "olist_geolocation_dataset.csv",
+                        "table": "geolocation"
+                    }
+                ]
+            }
+        },
+        "annotations": [],
+        "lastPublishTime": "2026-03-20T22:25:44Z"
+    },
+    "type": "Microsoft.DataFactory/factories/pipelines"
+}
